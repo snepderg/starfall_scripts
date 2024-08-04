@@ -1,0 +1,124 @@
+--@name Coin Flip
+--@author Snepderg
+--@shared
+
+-- TODO: Colors!
+-- TODO: Debt?
+-- TODO: Networking improvements?
+-- TODO: How should players earn money?
+
+-- SHARED CONFIG
+local debugging = true
+-- SHARED CONFIG END
+
+if SERVER then
+    local HEADS = 1
+    local TAILS = 0
+
+    local betSide -- 0 = tails, 1 = heads
+    local betAmount = 0
+
+    local actualAmount
+
+    net.receive( "coinFlip_A", function()
+        local ply = net.readEntity()
+        if not isValid( ply ) then return end
+
+        betAmount = net.readUInt( 32 )
+        betSide = net.readString() == "heads" and HEADS or TAILS
+
+        -- Getting the currency from the owner
+        net.start( "getPlayerCurrency" )
+        net.writeEntity( ply )
+        net.send( owner() )
+    end )
+
+    net.receive( "coinFlip_B", function()
+        -- Handle the coin flip
+        local ply = net.readEntity()
+        if not isValid( ply ) then return end
+
+        actualAmount = net.readUInt( 32 )
+
+        if actualAmount < betAmount then
+            print( "[CoinFlip]: You don't have enough money to bet that amount!" )
+            return
+        end
+
+        local result = math.random( 0, 1 )
+        local playerWon = result == betSide
+
+        print( "[CoinFlip]: You " .. (playerWon and "won" or "lost") .. " $" .. betAmount .. "!" )
+        net.start( "setPlayerCurrency" )
+        net.writeEntity( ply )
+        net.WriteUInt( playerWon and actualAmount + betAmount or actualAmount - betAmount, 32 )
+        net.send( owner() )
+    end )
+end
+
+if CLIENT then
+    -- CLIENT CONFIG
+    local command = "$c"
+    local PLAYER_STARTING_CURRENCY = 1000
+    -- CLIENT CONFIG END
+
+    if player() == owner() then
+        local coinData = file.Read( "coin_flip.json" ) or "{}"
+
+        net.receive( "getPlayerCurrency", function()
+            local ply = net.readEntity()
+            if not isValid( ply ) then return end
+
+            local currency = coinData[ply:getSteamID()]
+            if not currency then
+                coinData[ply:getSteamID()] = PLAYER_STARTING_CURRENCY
+            end
+
+            net.start( "coinFlip_B" )
+            net.writeUInt( currency, 32 )
+            net.send()
+        end )
+
+        net.receive( "setPlayerCurrency", function()
+            local ply = net.readEntity()
+            if not isValid( ply ) then return end
+
+            local newCurrency = net.readUInt( 32 )
+            coinData[ply:getSteamID()] = newCurrency
+
+            file.Write( "coin_flip.json", json.encode( coinData, true ) )
+        end )
+    end
+
+    hook.add( "PlayerChat", "listenForCoinFlip", function( ply, txt )
+        if not txt:startWith( command ) then return end
+
+        local args = txt:split( " " )
+        local amount = tonumber( args[2] )
+        local side = args[3]
+
+        if #args < 3 then
+            print( "[CoinFlip]: You must specify an amount and side to bet on!" )
+            return
+        end
+
+        if not amount then
+            print( "[CoinFlip]: You must specify an amount to bet!" )
+        end
+
+        if not side then
+            print( "[CoinFlip]: You must specify a side to bet on!" )
+        end
+
+        if side ~= "heads" and side ~= "tails" then
+            print( "[CoinFlip]: You must specify either 'heads' or 'tails'!" )
+            return
+        end
+
+        net.start( "coinFlip_A" )
+        net.writeEntity( ply )
+        net.writeUInt( amount, 32 )
+        net.writeString( side )
+        net.send()
+    end )
+end
