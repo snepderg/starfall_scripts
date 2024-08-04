@@ -49,6 +49,7 @@ if SERVER then
         local playerWon = result == betSide
 
         print( "[CoinFlip]: You " .. (playerWon and "won" or "lost") .. " $" .. betAmount .. "!" )
+
         net.start( "setPlayerCurrency" )
         net.writeEntity( ply )
         net.WriteUInt( playerWon and actualAmount + betAmount or actualAmount - betAmount, 32 )
@@ -86,7 +87,7 @@ if CLIENT then
             local newCurrency = net.readUInt( 32 )
             coinData[ply:getSteamID()] = newCurrency
 
-            file.Write( "coin_flip.json", json.encode( coinData, true ) )
+            file.Write( "coin_flip.json", json.encode( coinData, true )
         end )
     end
 
